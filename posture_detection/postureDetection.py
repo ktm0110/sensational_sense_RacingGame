@@ -48,7 +48,6 @@ while cap.isOpened():
         landmarks = results.pose_landmarks.landmark
         left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
         right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
-        # chest_center = landmarks[mp_pose.PoseLandmark.get_chest_center]
         nose = landmarks[mp_pose.PoseLandmark.NOSE]
 
         # 가슴의 중앙 좌표 계산
@@ -56,6 +55,14 @@ while cap.isOpened():
 
         # 기울기 계산 (가슴과 머리 사이의 각도)
         angle = calculate_angle(chest_center, (nose.x, nose.y))
+
+        # 이미지 크기와 비율에 맞춰 좌표 변환
+        image_height, image_width, _ = image.shape
+        chest_point = (int(chest_center[0] * image_width), int(chest_center[1] * image_height))
+        nose_point = (int(nose.x * image_width), int(nose.y * image_height))
+
+        # 가슴 중앙과 코 사이에 선 그리기
+        cv2.line(image, chest_point, nose_point, (0, 255, 0), 2)
 
         # 기울기 화면에 표시
         cv2.putText(image, f'Tilt: {int(angle)} degrees', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2,
