@@ -54,7 +54,7 @@ while cap.isOpened():
         chest_center = get_chest_center(left_shoulder, right_shoulder)
 
         # 기울기 계산 (가슴과 머리 사이의 각도)
-        angle = abs(calculate_angle(chest_center, (nose.x, nose.y)))
+        angle = abs(calculate_angle((nose.x, nose.y), chest_center))
 
         # 이미지 크기와 비율에 맞춰 좌표 변환
         image_height, image_width, _ = image.shape
