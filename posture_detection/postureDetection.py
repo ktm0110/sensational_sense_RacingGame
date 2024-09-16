@@ -9,10 +9,17 @@ pose = mp_pose.Pose(static_image_mode=False, model_complexity=1, enable_segmenta
 mp_drawing = mp.solutions.drawing_utils
 
 
-# 기울기 계산 함수 (어깨 각도)
+# 기울기 계산 함수 (가슴과 머리 사이의 각도)
 def calculate_angle(point1, point2):
-    angle = math.degrees(math.atan2(point2.y - point1.y, point2.x - point1.x))
+    angle = math.degrees(math.atan2(point2[1] - point1[1], point2[0] - point1[0]))
     return angle
+
+
+# 가슴의 중앙 좌표 계산 함수
+def get_chest_center(left_shoulder, right_shoulder):
+    center_x = (left_shoulder.x + right_shoulder.x) / 2
+    center_y = (left_shoulder.y + right_shoulder.y) / 2
+    return (center_x, center_y)
 
 
 # 웹캠 열기
@@ -37,13 +44,18 @@ while cap.isOpened():
         # 랜드마크 그리기
         mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
-        # 좌표 가져오기
+        # 랜드마크 좌표 가져오기
         landmarks = results.pose_landmarks.landmark
         left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
         right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+        # chest_center = landmarks[mp_pose.PoseLandmark.get_chest_center]
+        nose = landmarks[mp_pose.PoseLandmark.NOSE]
 
-        # 기울기 계산 (어깨의 수평 기울기)
-        angle = calculate_angle(left_shoulder, right_shoulder)
+        # 가슴의 중앙 좌표 계산
+        chest_center = get_chest_center(left_shoulder, right_shoulder)
+
+        # 기울기 계산 (가슴과 머리 사이의 각도)
+        angle = calculate_angle(chest_center, (nose.x, nose.y))
 
         # 기울기 화면에 표시
         cv2.putText(image, f'Tilt: {int(angle)} degrees', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2,
