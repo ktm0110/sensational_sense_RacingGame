@@ -1,34 +1,44 @@
-import tensorflow as tf
-import numpy as np
 import sounddevice as sd
-from scipy.io.wavfile import write
+import numpy as np
+import tensorflow as tf
+import scipy.signal
 
-# 모델 로드
-model_path = "C:/Users/ktmth/my_models/output_model.h5"
-model = tf.keras.models.load_model(model_path, compile=False)
+# 미리 훈련된 모델 불러오기
+model = tf.keras.models.load_model('output_model.h5')
 
-# 마이크 설정
-SAMPLE_RATE = 16000  # 샘플링 레이트 (Google Teachable Machine에 맞춤)
-DURATION = 1         # 입력 오디오 길이 (초)
-LABELS = ["Acceleration", "Deceleration", "Background Noise"]  # 예측할 레이블
 
-# 실시간 오디오 입력 처리 및 예측 함수
+# 입력된 오디오 데이터를 MFCC로 변환하는 함수
+def extract_features(audio, sample_rate=16000):
+    # MFCC 추출
+    frequencies, times, spectrogram = scipy.signal.spectrogram(audio, sample_rate)
+    return np.log(spectrogram.T + 1e-10)  # 로그 스펙트로그램 반환
+
+
+# 예측 수행 함수
+def predict_sound(audio, sample_rate=16000):
+    features = extract_features(audio, sample_rate)
+    features = np.expand_dims(features, axis=0)
+    prediction = model.predict(features)
+    return np.argmax(prediction)
+
+
+# 마이크에서 실시간으로 오디오 데이터를 수집하여 예측
 def audio_callback(indata, frames, time, status):
-    # 입력 데이터를 (1, 43, 232, 1) 크기로 변환 (Teachable Machine에서 사용한 입력 형식에 맞춤)
-    input_data = np.mean(indata, axis=1)  # 여러 채널(스테레오)을 하나로 통합
-    input_data = input_data[:SAMPLE_RATE]  # 첫 1초 데이터만 사용
-    input_data = np.expand_dims(input_data, axis=1)  # 채널 추가
-    input_data = np.reshape(input_data, (1, 43, 232, 1))
+    # 실시간 오디오 데이터를 분석
+    sample_rate = 16000  # 모델 훈련 시의 샘플 레이트
+    audio_data = np.mean(indata, axis=1)  # 스테레오 -> 모노 변환
+    prediction = predict_sound(audio_data, sample_rate)
 
-    # 모델 예측
-    predictions = model.predict(input_data)
-    predicted_index = np.argmax(predictions[0])  # 가장 높은 확률의 인덱스 찾기
-    predicted_label = LABELS[predicted_index]
+    # 결과 출력
+    if prediction == 0:
+        print("부우웅~ (Forward)")
+    elif prediction == 1:
+        print("끼이익~ (Backward)")
+    else:
+        print("배경 소음 (Background noise)")
 
-    print(f"Predicted Label: {predicted_label} - Confidence: {predictions[0][predicted_index]:.2f}")
 
-# 마이크 입력 스트림 시작
-print("Listening for audio commands...")
-
-with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, callback=audio_callback):
-    sd.sleep(int(DURATION * 1000))  # 1초간 대기
+# 마이크 스트림 시작
+with sd.InputStream(callback=audio_callback, channels=1, samplerate=16000):
+    print("실시간 음성 인식 중... (종료하려면 Ctrl+C)")
+    sd.sleep(10000)  # 10초 동안 실행

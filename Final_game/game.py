@@ -4,12 +4,22 @@ import random
 import cv2
 import mediapipe as mp
 import math
+import pyaudio
+import numpy as np
 
 # Mediapipe 초기화
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(static_image_mode=False, model_complexity=1, enable_segmentation=False,
                     min_detection_confidence=0.5)
 mp_drawing = mp.solutions.drawing_utils
+
+# PyAudio 초기화 (음성 인식을 위한 설정)
+FORMAT = pyaudio.paInt16
+CHANNELS = 1
+RATE = 44100
+CHUNK = 1024
+audio = pyaudio.PyAudio()
+stream = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
 
 # 기울기 계산 함수 (가슴과 머리 사이의 각도)
 def calculate_angle(point1, point2):
@@ -124,6 +134,20 @@ def increase_score():
         STAGE += 1
         STAGESCORE += stair
 
+def audio_recognition():
+    # 음성 데이터 읽기 및 진폭 계산
+    data = stream.read(CHUNK, exception_on_overflow=False)
+    audio_data = np.frombuffer(data, dtype=np.int16)
+    peak_amplitude = np.max(np.abs(audio_data))
+
+    # 소리 구분 조건
+    if peak_amplitude < 1000:
+        return "배경 소음"
+    elif peak_amplitude < 3000:
+        return "부우웅"
+    else:
+        return "끼이익"
+
 def main():
     global SCREEN, CAR_COUNT, WINDOW_WIDTH, WINDOW_HEIGHT, PNUMBER
     pygame.init()
@@ -151,6 +175,16 @@ def main():
                 pygame.quit()
                 sys.exit()
 
+        # 음성 인식 결과에 따른 조작
+        sound = audio_recognition()
+        if sound == "부우웅":
+            player.dy = -5
+        elif sound == "끼이익":
+            player.dy = 5
+        else:
+            player.dy = 0
+
+        # 카메라로부터 프레임 가져오기
         ret, frame = cap.read()
         if not ret:
             print("카메라에서 영상을 가져올 수 없습니다.")
@@ -158,7 +192,6 @@ def main():
 
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = pose.process(image)
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
         if results.pose_landmarks:
             landmarks = results.pose_landmarks.landmark
@@ -178,69 +211,38 @@ def main():
         # 배경색을 회색으로
         SCREEN.fill(GRAY)
 
-        ''' 게임 코드 작성 '''
-
-        # 플레이어를 스크린에 표시 및 화면 밖으로 못 벗어나게 하기
+        # 플레이어 표시 및 이동 제어
         player.draw_car()
         player.move_x()
         player.move_y()
         player.check_screen()
 
-        # 다른 자동차들 도로위에 움직이기
-        for i in range(CAR_COUNT):
-            CARS[i].draw_car()
-            CARS[i].rect.y += CARS[i].dy
-
-            # 화면 아래로 내려가면 자동차를 다시 로드한다.
-            # 로드시 자동차의 이미지가 랜덤으로 바뀌므로 새로운 자동차가 생긴 듯한 효과가 있다.
-            if CARS[i].rect.y > WINDOW_HEIGHT:
+        # 다른 자동차 이동 및 충돌 처리
+        for car in CARS:
+            car.draw_car()
+            car.rect.y += car.dy
+            if car.rect.y > WINDOW_HEIGHT:
                 increase_score()
-                CARS[i].load_car()
+                car.load_car()
 
-        # 플레이어와 다른 차량 충돌 감지
-        for i in range(CAR_COUNT):
-            if player.check_collision(CARS[i], 5):
+            if player.check_collision(car, 5):
                 PNUMBER -= 1
-                # 부딪쳤을 경우 상대방 차량 튕겨나게 함. 좌우 튕김
-                if player.rect.x > CARS[i].rect.x:
-                    CARS[i].rect.x -= CARS[i].rect.width + 10
+                if player.rect.x > car.rect.x:
+                    car.rect.x -= car.rect.width + 10
                 else:
-                    CARS[i].rect.x += CARS[i].rect.width + 10
+                    car.rect.x += car.rect.width + 10
 
-                # 위 아래 튕김
-                if player.rect.y > CARS[i].rect.y:
-                    CARS[i].rect.y -= 30
-                else:
-                    CARS[i].rect.y += 30
-
-        # 상대 자동차들끼리 충돌 감지, 각 자동차들을 순서대로 서로 비교
-        for i in range(CAR_COUNT):
-            for j in range(i + 1, CAR_COUNT):
-                # 충돌 후 서로 팅겨 나가게 함.
-                if CARS[i].check_collision(CARS[j]):
-                    # 왼쪽에 있는 차는 왼쪽으로 오른쪽 차는 오른쪽으로 튕김
-                    if CARS[i].rect.x > CARS[j].rect.x:
-                        CARS[i].rect.x += 4
-                        CARS[j].rect.x -= 4
-                    else:
-                        CARS[i].rect.x -= 4
-                        CARS[j].rect.x += 4
-
-                    # 위쪽 차는 위로, 아래쪽차는 아래로 튕김
-                    if CARS[i].rect.y > CARS[j].rect.y:
-                        CARS[i].rect.y += CARS[i].dy
-                        CARS[j].rect.y -= CARS[j].dy
-                    else:
-                        CARS[i].rect.y -= CARS[i].dy
-                        CARS[j].rect.y += CARS[j].dy
-
-        ''' 게임 코드 끝 '''
         draw_score()
         pygame.display.flip()
         clock.tick(60)
 
+        # 'q' 키를 누르면 종료
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
     cap.release()
     cv2.destroyAllWindows()
+
 
 if __name__ == '__main__':
     main()
