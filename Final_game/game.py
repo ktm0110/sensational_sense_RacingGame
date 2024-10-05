@@ -47,7 +47,7 @@ CAR_COUNT = 5
 SCORE = 0
 STAGESCORE = 0
 STAGESTAIR = 1000
-PNUMBER = 5
+LIFE_COUNT = 5
 CARS = []
 
 # 게임 상태 변수
@@ -125,14 +125,14 @@ def draw_score():
     text_stage_rect.centerx = round(WINDOW_WIDTH / 2)
     SCREEN.blit(text_stage, [text_stage_rect.x, 15])
 
-    for i in range(PNUMBER):
+    for i in range(LIFE_COUNT):
         if i < 5:
             pimage = pygame.image.load(DIRCARS + 'Player.png')
             pimage = pygame.transform.scale(pimage, (15, 38))
             px = WINDOW_WIDTH - 20 - (i * 30)
             SCREEN.blit(pimage, [px, 15])
         else:
-            text_life_count = font_01.render("+" + str(PNUMBER - 5), True, WHITE)
+            text_life_count = font_01.render("+" + str(LIFE_COUNT - 5), True, WHITE)
             text_life_count_x = WINDOW_WIDTH - 30 - (5 * 30)
             SCREEN.blit(text_life_count, [text_life_count_x, 25])
 
@@ -157,12 +157,23 @@ def camera_thread():
         results = pose.process(image)
 
         if results.pose_landmarks:
+            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
             landmarks = results.pose_landmarks.landmark
             left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
             right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
             nose = landmarks[mp_pose.PoseLandmark.NOSE]
             chest_center = get_chest_center(left_shoulder, right_shoulder)
             tilt_angle = abs(calculate_angle((nose.x, nose.y), chest_center))
+
+            chest_point = (int(chest_center[0] * frame.shape[1]), int(chest_center[1] * frame.shape[0]))
+            nose_point = (int(nose.x * frame.shape[1]), int(nose.y * frame.shape[0]))
+            cv2.line(image, chest_point, nose_point, (0, 255, 0), 2)
+
+        # 카메라 화면 출력
+        cv2.imshow('Body Posture Detection', image)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            camera_running = False
+            break
 
     cap.release()
 
@@ -178,7 +189,7 @@ def audio_thread():
         # 소리 구분 조건
         if peak_amplitude < 1000:
             sound_command = "배경 소음"
-        elif peak_amplitude < 3000:
+        elif peak_amplitude < 2000:
             sound_command = "부우웅"
         else:
             sound_command = "끼이익"
@@ -207,7 +218,7 @@ def draw_game_over():
     SCREEN.blit(restart_text, [WINDOW_WIDTH // 2 - restart_text.get_width() // 2, WINDOW_HEIGHT // 2])
 
 def main():
-    global SCREEN, CAR_COUNT, WINDOW_WIDTH, WINDOW_HEIGHT, PNUMBER, camera_running, audio_running, game_state, SCORE, STAGE, STAGESCORE, PNUMBER
+    global SCREEN, CAR_COUNT, WINDOW_WIDTH, WINDOW_HEIGHT, LIFE_COUNT, camera_running, audio_running, game_state, SCORE, STAGE, STAGESCORE, LIFE_COUNT
     pygame.init()
     SCREEN = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.RESIZABLE)
     pygame.display.set_caption("Racing Car Game")
