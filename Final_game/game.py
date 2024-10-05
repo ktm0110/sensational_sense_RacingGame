@@ -6,6 +6,7 @@ import mediapipe as mp
 import math
 import pyaudio
 import numpy as np
+import threading
 
 # Mediapipe 초기화
 mp_pose = mp.solutions.pose
@@ -19,7 +20,38 @@ CHANNELS = 1
 RATE = 44100
 CHUNK = 1024
 audio = pyaudio.PyAudio()
-stream = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+
+# 카메라와 오디오 데이터를 사용할 글로벌 변수
+tilt_angle = 90
+sound_command = "배경 소음"
+camera_running = True
+audio_running = True
+
+# 게임 화면 크기
+WINDOW_WIDTH = 550
+WINDOW_HEIGHT = 800
+
+# 색상
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+GRAY = (150, 150, 150)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+
+# 소스 디렉토리
+DIRCARS = "cars/"
+
+# 기본 변수
+STAGE = 1
+CAR_COUNT = 5
+SCORE = 0
+STAGESCORE = 0
+STAGESTAIR = 1000
+PNUMBER = 5
+CARS = []
+
+# 게임 상태 변수
+game_state = "LOBBY"  # LOBBY, PLAYING, GAME_OVER
 
 # 기울기 계산 함수 (가슴과 머리 사이의 각도)
 def calculate_angle(point1, point2):
@@ -31,28 +63,6 @@ def get_chest_center(left_shoulder, right_shoulder):
     center_x = (left_shoulder.x + right_shoulder.x) / 2
     center_y = (left_shoulder.y + right_shoulder.y) / 2
     return (center_x, center_y)
-
-# 게임 화면 크기
-WINDOW_WIDTH = 550
-WINDOW_HEIGHT = 800
-
-# 색상
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-GRAY = (150, 150, 150)
-
-# 소스 디렉토리
-DIRCARS = "cars/"
-DIRSOUND = "sound/"
-
-# 기본 변수
-STAGE = 1
-CAR_COUNT = 5
-SCORE = 0
-STAGESCORE = 0
-STAGESTAIR = 1000
-PNUMBER = 5
-CARS = []
 
 class Car:
     car_image = [f'Car{i:02d}.png' for i in range(1, 41)]
@@ -122,9 +132,9 @@ def draw_score():
             px = WINDOW_WIDTH - 20 - (i * 30)
             SCREEN.blit(pimage, [px, 15])
         else:
-            text_pnumber = font_01.render("+" + str(PNUMBER - 5), True, WHITE)
-            text_pnumber_x = WINDOW_WIDTH - 30 - (5 * 30)
-            SCREEN.blit(text_pnumber, [text_pnumber_x, 25])
+            text_life_count = font_01.render("+" + str(PNUMBER - 5), True, WHITE)
+            text_life_count_x = WINDOW_WIDTH - 30 - (5 * 30)
+            SCREEN.blit(text_life_count, [text_life_count_x, 25])
 
 def increase_score():
     global SCORE, STAGE, STAGESCORE
@@ -134,60 +144,13 @@ def increase_score():
         STAGE += 1
         STAGESCORE += stair
 
-def audio_recognition():
-    # 음성 데이터 읽기 및 진폭 계산
-    data = stream.read(CHUNK, exception_on_overflow=False)
-    audio_data = np.frombuffer(data, dtype=np.int16)
-    peak_amplitude = np.max(np.abs(audio_data))
-
-    # 소리 구분 조건
-    if peak_amplitude < 1000:
-        return "배경 소음"
-    elif peak_amplitude < 3000:
-        return "부우웅"
-    else:
-        return "끼이익"
-
-def main():
-    global SCREEN, CAR_COUNT, WINDOW_WIDTH, WINDOW_HEIGHT, PNUMBER
-    pygame.init()
-    SCREEN = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.RESIZABLE)
-    pygame.display.set_caption("Racing Car Game")
-    windowicon = pygame.image.load(DIRCARS + 'icon.png').convert_alpha()
-    pygame.display.set_icon(windowicon)
-    clock = pygame.time.Clock()
-
-    player = Car(round(WINDOW_WIDTH / 2), round(WINDOW_HEIGHT - 150), 0, 0)
-    player.load_car("p")
-
-    for i in range(CAR_COUNT):
-        car = Car(0, 0, 0, 0)
-        car.load_car()
-        CARS.append(car)
-
+def camera_thread():
+    global tilt_angle, camera_running
     cap = cv2.VideoCapture(0)
-    playing = True
 
-    while playing:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                playing = False
-                pygame.quit()
-                sys.exit()
-
-        # 음성 인식 결과에 따른 조작
-        sound = audio_recognition()
-        if sound == "부우웅":
-            player.dy = -5
-        elif sound == "끼이익":
-            player.dy = 5
-        else:
-            player.dy = 0
-
-        # 카메라로부터 프레임 가져오기
+    while camera_running:
         ret, frame = cap.read()
         if not ret:
-            print("카메라에서 영상을 가져올 수 없습니다.")
             break
 
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -199,50 +162,155 @@ def main():
             right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
             nose = landmarks[mp_pose.PoseLandmark.NOSE]
             chest_center = get_chest_center(left_shoulder, right_shoulder)
-            angle = abs(calculate_angle((nose.x, nose.y), chest_center))
+            tilt_angle = abs(calculate_angle((nose.x, nose.y), chest_center))
 
-            if angle > 100:
+    cap.release()
+
+def audio_thread():
+    global sound_command, audio_running
+    stream = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+
+    while audio_running:
+        data = stream.read(CHUNK, exception_on_overflow=False)
+        audio_data = np.frombuffer(data, dtype=np.int16)
+        peak_amplitude = np.max(np.abs(audio_data))
+
+        # 소리 구분 조건
+        if peak_amplitude < 1000:
+            sound_command = "배경 소음"
+        elif peak_amplitude < 3000:
+            sound_command = "부우웅"
+        else:
+            sound_command = "끼이익"
+
+    stream.stop_stream()
+    stream.close()
+
+def draw_lobby():
+    SCREEN.fill(WHITE)
+    font = pygame.font.SysFont("FixedSsy", 50, True, False)
+    text = font.render("Racing Car Game", True, BLACK)
+    SCREEN.blit(text, [WINDOW_WIDTH // 2 - text.get_width() // 2, WINDOW_HEIGHT // 4])
+
+    font_small = pygame.font.SysFont("FixedSsy", 30, True, False)
+    start_text = font_small.render("Press ENTER to Start", True, GREEN)
+    SCREEN.blit(start_text, [WINDOW_WIDTH // 2 - start_text.get_width() // 2, WINDOW_HEIGHT // 2])
+
+def draw_game_over():
+    SCREEN.fill(RED)
+    font = pygame.font.SysFont("FixedSsy", 50, True, False)
+    text = font.render("Game Over", True, WHITE)
+    SCREEN.blit(text, [WINDOW_WIDTH // 2 - text.get_width() // 2, WINDOW_HEIGHT // 4])
+
+    font_small = pygame.font.SysFont("FixedSsy", 30, True, False)
+    restart_text = font_small.render("Press ENTER to Restart", True, WHITE)
+    SCREEN.blit(restart_text, [WINDOW_WIDTH // 2 - restart_text.get_width() // 2, WINDOW_HEIGHT // 2])
+
+def main():
+    global SCREEN, CAR_COUNT, WINDOW_WIDTH, WINDOW_HEIGHT, PNUMBER, camera_running, audio_running, game_state, SCORE, STAGE, STAGESCORE, PNUMBER
+    pygame.init()
+    SCREEN = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.RESIZABLE)
+    pygame.display.set_caption("Racing Car Game")
+    clock = pygame.time.Clock()
+
+    player = Car(round(WINDOW_WIDTH / 2), round(WINDOW_HEIGHT - 150), 0, 0)
+    player.load_car("p")
+
+    for i in range(CAR_COUNT):
+        car = Car(0, 0, 0, 0)
+        car.load_car()
+        CARS.append(car)
+
+    # 카메라 및 오디오 스레드 시작
+    camera_thread_instance = threading.Thread(target=camera_thread)
+    audio_thread_instance = threading.Thread(target=audio_thread)
+    camera_thread_instance.start()
+    audio_thread_instance.start()
+
+    playing = True
+
+    while playing:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                playing = False
+                camera_running = False
+                audio_running = False
+                camera_thread_instance.join()
+                audio_thread_instance.join()
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    if game_state == "LOBBY":
+                        game_state = "PLAYING"
+                    elif game_state == "GAME_OVER":
+                        # 게임 리셋
+                        SCORE = 0
+                        STAGE = 1
+                        STAGESCORE = 0
+                        LIFE_COUNT = 5
+                        player.rect.x = round(WINDOW_WIDTH / 2)
+                        player.rect.y = round(WINDOW_HEIGHT - 150)
+                        for car in CARS:
+                            car.load_car()
+                        game_state = "PLAYING"
+
+        if game_state == "LOBBY":
+            draw_lobby()
+        elif game_state == "PLAYING":
+            # 음성 인식 결과에 따른 조작
+            if sound_command == "부우웅":
+                player.dy = -5
+            elif sound_command == "끼이익":
+                player.dy = 5
+            else:
+                player.dy = 0
+
+            # 기울기에 따른 좌우 이동 제어
+            if tilt_angle > 100:
                 player.dx = -5
-            elif angle < 80:
+            elif tilt_angle < 80:
                 player.dx = 5
             else:
                 player.dx = 0
 
-        # 배경색을 회색으로
-        SCREEN.fill(GRAY)
+            # 배경색을 회색으로 설정
+            SCREEN.fill(GRAY)
 
-        # 플레이어 표시 및 이동 제어
-        player.draw_car()
-        player.move_x()
-        player.move_y()
-        player.check_screen()
+            # 플레이어 표시 및 이동 제어
+            player.draw_car()
+            player.move_x()
+            player.move_y()
+            player.check_screen()
 
-        # 다른 자동차 이동 및 충돌 처리
-        for car in CARS:
-            car.draw_car()
-            car.rect.y += car.dy
-            if car.rect.y > WINDOW_HEIGHT:
-                increase_score()
-                car.load_car()
+            # 다른 자동차 이동 및 충돌 처리
+            for car in CARS:
+                car.draw_car()
+                car.rect.y += car.dy
+                if car.rect.y > WINDOW_HEIGHT:
+                    increase_score()
+                    car.load_car()
 
-            if player.check_collision(car, 5):
-                PNUMBER -= 1
-                if player.rect.x > car.rect.x:
-                    car.rect.x -= car.rect.width + 10
-                else:
-                    car.rect.x += car.rect.width + 10
+                if player.check_collision(car, 5):
+                    LIFE_COUNT -= 1
+                    if LIFE_COUNT == 0:
+                        game_state = "GAME_OVER"
+                    if player.rect.x > car.rect.x:
+                        car.rect.x -= car.rect.width + 10
+                    else:
+                        car.rect.x += car.rect.width + 10
 
-        draw_score()
+            draw_score()
+        elif game_state == "GAME_OVER":
+            draw_game_over()
+
         pygame.display.flip()
         clock.tick(60)
 
-        # 'q' 키를 누르면 종료
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
-
+    camera_running = False
+    audio_running = False
+    camera_thread_instance.join()
+    audio_thread_instance.join()
 
 if __name__ == '__main__':
     main()
