@@ -214,23 +214,35 @@ def audio_thread():
 
 def draw_lobby():
     SCREEN.fill(WHITE)
+    lobby_image = pygame.image.load(DIRCARS + 'lobby.png')
+    lobby_image = pygame.transform.scale(lobby_image, (WINDOW_WIDTH, int(WINDOW_WIDTH * (6307 / 6501))))
+    SCREEN.blit(lobby_image, (0, (WINDOW_HEIGHT - lobby_image.get_height()) // 2))
+
     font = pygame.font.SysFont("FixedSsy", 50, True, False)
     text = font.render("Racing Car Game", True, BLACK)
-    SCREEN.blit(text, [WINDOW_WIDTH // 2 - text.get_width() // 2, WINDOW_HEIGHT // 4])
+    SCREEN.blit(text, [WINDOW_WIDTH // 2 - text.get_width() // 2, 50])
 
-    font_small = pygame.font.SysFont("FixedSsy", 30, True, False)
+    font_small = pygame.font.SysFont("FixedSsy", 40, True, False)
     start_text = font_small.render("Press ENTER to Start", True, GREEN)
-    SCREEN.blit(start_text, [WINDOW_WIDTH // 2 - start_text.get_width() // 2, WINDOW_HEIGHT // 2])
+    SCREEN.blit(start_text, [WINDOW_WIDTH // 2 - start_text.get_width() // 2, 670])
 
 def draw_game_over():
-    SCREEN.fill(RED)
-    font = pygame.font.SysFont("FixedSsy", 50, True, False)
-    text = font.render("Game Over", True, WHITE)
-    SCREEN.blit(text, [WINDOW_WIDTH // 2 - text.get_width() // 2, WINDOW_HEIGHT // 4])
+    SCREEN.fill(WHITE)
+    end_image = pygame.image.load(DIRCARS + 'end.png')
+    end_image = pygame.transform.scale(end_image, (WINDOW_WIDTH, int(WINDOW_WIDTH * (1024 / 1792))))
+    SCREEN.blit(end_image, (0, (WINDOW_HEIGHT - end_image.get_height()) // 2))
 
-    font_small = pygame.font.SysFont("FixedSsy", 30, True, False)
-    restart_text = font_small.render("Press ENTER to Restart", True, WHITE)
-    SCREEN.blit(restart_text, [WINDOW_WIDTH // 2 - restart_text.get_width() // 2, WINDOW_HEIGHT // 2])
+    font = pygame.font.SysFont("FixedSsy", 70, True, False)
+    text = font.render("Game Over", True, BLACK)
+    SCREEN.blit(text, [WINDOW_WIDTH // 2 - text.get_width() // 2, 50])
+
+    font_small = pygame.font.SysFont("FixedSsy", 40, True, False)
+    restart_text = font_small.render("Press ENTER to Restart", True, GREEN)
+    SCREEN.blit(restart_text, [WINDOW_WIDTH // 2 - restart_text.get_width() // 2, 650])
+
+    # 점수 표시
+    score_text = font_small.render(f'Your Score: {SCORE}', True, BLACK)
+    SCREEN.blit(score_text, [WINDOW_WIDTH // 2 - score_text.get_width() // 2, 100])
 
 def main():
     global SCREEN, CAR_COUNT, WINDOW_WIDTH, WINDOW_HEIGHT, LIFE_COUNT, camera_running, audio_running, game_state, SCORE, STAGE, STAGESCORE, LIFE_COUNT
@@ -328,6 +340,27 @@ def main():
                         car.rect.x -= car.rect.width + 10
                     else:
                         car.rect.x += car.rect.width + 10
+
+            # 상대 자동차들끼리 충돌 감지, 각 자동차들을 순서대로 서로 비교
+            for i in range(CAR_COUNT):
+                for j in range(i + 1, CAR_COUNT):
+                    # 충돌 후 서로 튕겨 나가게 함.
+                    if CARS[i].check_collision(CARS[j]):
+                        # 왼쪽에 있는 차는 왼쪽으로 오른쪽 차는 오른쪽으로 튕김
+                        if CARS[i].rect.x > CARS[j].rect.x:
+                            CARS[i].rect.x += 4
+                            CARS[j].rect.x -= 4
+                        else:
+                            CARS[i].rect.x -= 4
+                            CARS[j].rect.x += 4
+
+                        # 위쪽 차는 위로, 아래쪽차는 아래로 튕김
+                        if CARS[i].rect.y > CARS[j].rect.y:
+                            CARS[i].rect.y += CARS[i].dy
+                            CARS[j].rect.y -= CARS[j].dy
+                        else:
+                            CARS[i].rect.y -= CARS[i].dy
+                            CARS[j].rect.y += CARS[j].dy
 
             draw_score()
         elif game_state == "GAME_OVER":
