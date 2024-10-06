@@ -26,6 +26,7 @@ tilt_angle = 90
 sound_command = "배경 소음"
 camera_running = True
 audio_running = True
+audio_peak = 0
 
 # 게임 화면 크기
 WINDOW_WIDTH = 550
@@ -37,6 +38,7 @@ WHITE = (255, 255, 255)
 GRAY = (150, 150, 150)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
+BLUE = (0, 0, 255)
 
 # 소스 디렉토리
 DIRCARS = "cars/"
@@ -136,6 +138,16 @@ def draw_score():
             text_life_count_x = WINDOW_WIDTH - 30 - (5 * 30)
             SCREEN.blit(text_life_count, [text_life_count_x, 25])
 
+def draw_audio_level():
+    # 상단에 소리의 크기를 바 형태로 표시
+    bar_width = int((audio_peak / 5000) * WINDOW_WIDTH)
+    bar_width = min(bar_width, WINDOW_WIDTH)  # 바의 최대 너비를 화면 너비로 제한
+    pygame.draw.rect(SCREEN, BLUE, (0, 0, bar_width, 15))
+
+    # 빨간색 선으로 배경 소음, 부우웅, 끼이익 기준 표시
+    pygame.draw.line(SCREEN, RED, (int((1000 / 5000) * WINDOW_WIDTH), 0), (int((1000 / 5000) * WINDOW_WIDTH), 15), 2)
+    pygame.draw.line(SCREEN, RED, (int((2000 / 5000) * WINDOW_WIDTH), 0), (int((2000 / 5000) * WINDOW_WIDTH), 15), 2)
+
 def increase_score():
     global SCORE, STAGE, STAGESCORE
     SCORE += 10
@@ -169,6 +181,9 @@ def camera_thread():
             nose_point = (int(nose.x * frame.shape[1]), int(nose.y * frame.shape[0]))
             cv2.line(image, chest_point, nose_point, (0, 255, 0), 2)
 
+            # 기울기 화면에 표시
+            cv2.putText(image, f'ANGLE: {int(tilt_angle)} degrees', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
         # 카메라 화면 출력
         cv2.imshow('Body Posture Detection', image)
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -178,18 +193,18 @@ def camera_thread():
     cap.release()
 
 def audio_thread():
-    global sound_command, audio_running
+    global sound_command, audio_running, audio_peak
     stream = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
 
     while audio_running:
         data = stream.read(CHUNK, exception_on_overflow=False)
         audio_data = np.frombuffer(data, dtype=np.int16)
-        peak_amplitude = np.max(np.abs(audio_data))
+        audio_peak = np.max(np.abs(audio_data))
 
         # 소리 구분 조건
-        if peak_amplitude < 1000:
+        if audio_peak < 1000:
             sound_command = "배경 소음"
-        elif peak_amplitude < 2000:
+        elif audio_peak < 2000:
             sound_command = "부우웅"
         else:
             sound_command = "끼이익"
@@ -287,6 +302,9 @@ def main():
 
             # 배경색을 회색으로 설정
             SCREEN.fill(GRAY)
+
+            # 오디오 레벨 표시
+            draw_audio_level()
 
             # 플레이어 표시 및 이동 제어
             player.draw_car()
