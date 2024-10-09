@@ -42,6 +42,7 @@ BLUE = (0, 0, 255)
 
 # 소스 디렉토리
 DIRCARS = "cars/"
+DIRSOUND = "sound/"
 
 # 기본 변수
 STAGE = 1
@@ -195,7 +196,6 @@ def camera_thread():
             break
 
     cap.release()
-    cv2.destroyAllWindows()
 
 def audio_thread():
     global sound_command, audio_running, audio_peak
@@ -286,6 +286,8 @@ def main():
                 if event.key == pygame.K_RETURN:
                     if game_state == "LOBBY":
                         game_state = "PLAYING"
+                        pygame.mixer.music.load(DIRSOUND + 'background.mp3')
+                        pygame.mixer.music.play(-1)
                     elif game_state == "GAME_OVER":
                         # 게임 리셋
                         SCORE = 0
@@ -297,6 +299,8 @@ def main():
                         for car in CARS:
                             car.load_car()
                         game_state = "PLAYING"
+                        pygame.mixer.music.load(DIRSOUND + 'background.mp3')
+                        pygame.mixer.music.play(-1)
 
         if game_state == "LOBBY":
             draw_lobby()
@@ -339,8 +343,11 @@ def main():
 
                 if player.check_collision(car, 5):
                     LIFE_COUNT -= 1
+                    pygame.mixer.Sound(DIRSOUND + 'crush.mp3').play()
                     if LIFE_COUNT == 0:
                         game_state = "GAME_OVER"
+                        pygame.mixer.music.stop()
+                        pygame.mixer.Sound(DIRSOUND + 'game_over.mp3').play()
                     if player.rect.x > car.rect.x:
                         car.rect.x -= car.rect.width + 10
                     else:
