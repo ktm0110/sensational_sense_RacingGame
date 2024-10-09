@@ -245,6 +245,9 @@ def draw_game_over():
     restart_text = font_small.render("Press ENTER to Restart", True, GREEN)
     SCREEN.blit(restart_text, [WINDOW_WIDTH // 2 - restart_text.get_width() // 2, 650])
 
+    quit_text = font_small.render("Press ESC to Quit Game", True, GREEN)
+    SCREEN.blit(quit_text, [WINDOW_WIDTH // 2 - quit_text.get_width() // 2, 700])
+
     # 점수 표시
     score_text = font_small.render(f'Your Score: {SCORE}', True, BLACK)
     SCREEN.blit(score_text, [WINDOW_WIDTH // 2 - score_text.get_width() // 2, 100])
@@ -301,6 +304,15 @@ def main():
                         game_state = "PLAYING"
                         pygame.mixer.music.load(DIRSOUND + 'background.mp3')
                         pygame.mixer.music.play(-1)
+                elif event.key == pygame.K_ESCAPE:
+                    if game_state == "GAME_OVER":
+                        playing = False
+                        camera_running = False
+                        audio_running = False
+                        camera_thread_instance.join()
+                        audio_thread_instance.join()
+                        pygame.quit()
+                        sys.exit()
 
         if game_state == "LOBBY":
             draw_lobby()
