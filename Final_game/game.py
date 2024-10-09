@@ -165,11 +165,15 @@ def camera_thread():
         if not ret:
             break
 
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = pose.process(image)
+        # 좌우 반전 적용
+        frame = cv2.flip(frame, 1)
+
+        # Mediapipe 처리를 위해 RGB로 변환
+        image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = pose.process(image_rgb)
 
         if results.pose_landmarks:
-            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+            mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
             landmarks = results.pose_landmarks.landmark
             left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
             right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
@@ -179,18 +183,19 @@ def camera_thread():
 
             chest_point = (int(chest_center[0] * frame.shape[1]), int(chest_center[1] * frame.shape[0]))
             nose_point = (int(nose.x * frame.shape[1]), int(nose.y * frame.shape[0]))
-            cv2.line(image, chest_point, nose_point, (0, 255, 0), 2)
+            cv2.line(frame, chest_point, nose_point, (0, 255, 0), 2)
 
             # 기울기 화면에 표시
-            cv2.putText(image, f'ANGLE: {int(tilt_angle)} degrees', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            cv2.putText(frame, f'ANGLE: {int(tilt_angle)} degrees', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-        # 카메라 화면 출력
-        cv2.imshow('Body Posture Detection', image)
+        # 카메라 화면 출력 (BGR로 출력)
+        cv2.imshow('Body Posture Detection', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             camera_running = False
             break
 
     cap.release()
+    cv2.destroyAllWindows()
 
 def audio_thread():
     global sound_command, audio_running, audio_peak
@@ -305,9 +310,9 @@ def main():
                 player.dy = 0
 
             # 기울기에 따른 좌우 이동 제어
-            if tilt_angle > 100:
+            if tilt_angle < 80:
                 player.dx = -5
-            elif tilt_angle < 80:
+            elif tilt_angle > 100:
                 player.dx = 5
             else:
                 player.dx = 0
